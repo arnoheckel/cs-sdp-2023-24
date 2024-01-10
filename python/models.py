@@ -1,5 +1,7 @@
 import pickle
 from abc import abstractmethod
+from gurobipy import *
+from metrics import PairsExplained
 
 import numpy as np
 
@@ -152,7 +154,10 @@ class RandomExampleModel(BaseModel):
         X: np.ndarray
             (n_samples, n_features) list of features of elements
         """
+        
+
         return np.stack([np.dot(X, self.weights[0]), np.dot(X, self.weights[1])], axis=1)
+        
 
 
 class TwoClustersMIP(BaseModel):
@@ -171,12 +176,19 @@ class TwoClustersMIP(BaseModel):
             Number of clusters to implement in the MIP.
         """
         self.seed = 123
+        self.K = n_clusters
+        self.L = n_pieces
+        self.N_CRITERIA = 4
+        self.epsilon = 0.0001
         self.model = self.instantiate()
+       
 
     def instantiate(self):
         """Instantiation of the MIP Variables - To be completed."""
-        # To be completed
-        return
+
+        # Instanciation du modèle
+        m = Model("MIP model")
+        return m
 
     def fit(self, X, Y):
         """Estimation of the parameters - To be completed.
@@ -189,8 +201,136 @@ class TwoClustersMIP(BaseModel):
             (n_samples, n_features) features of unchosen elements
         """
 
-        # To be completed
-        return
+        #Ordonnées des points d'inflexion en variables
+        ordonnees_infl = [[[self.model.addVar(name=f"u_{k}_{i}_{l}") for l in range(self.L)] for i in range(self.N_CRITERIA)] for k in range(self.K)]
+        
+
+        #On ajoute une variable binaire pour modéliser le fait qu'un paire est effectivement expliquée par le modèle 
+        b = [[self.model.addVar(vtype=GRB.BINARY, name=f"b_{j}") for j in range(2000)] for k in range(self.K)]
+
+        #On met à jour le modèle avec les nouvelles variables
+        self.model.update()
+
+        #On détermine les valeurs maximales et minimales pour chaque critère d'évaluation 
+        A = np.concatenate((X,Y), axis = 0)
+        mins = A.min(axis=0)
+        maxs = A.max(axis=0)
+
+
+        #Fonction pour récupèrer les abscisses des points d'inflexion
+        def xl(i, l):
+            return mins[i] + l*(maxs[i] - mins[i])/self.L
+        
+        #Fonction qui permet de récupérer la somme des poids pour chaque critère (pour la contrainte de la somme des poids valant 1)
+        def weight_sum(k, ordo):
+            somme = 0
+            for i in range(self.N_CRITERIA):
+                somme += ordo[k][i][-1]
+            return somme 
+
+        
+
+
+
+        #Fonction qui renvoie la valeur de la fonction d'utilité pour un critère i en n'importe quel point X[j] 
+        def u_k_i(k,i,j,X):
+            x = X[j][i]
+
+            if x == maxs[i]:
+                return ordonnees_infl[k][i][self.L - 1]
+
+            else : 
+                #On récupère la première des 5 abscisses de points d'inflexion inférieure à la valeur d'intérêt 
+                for l in range(self.L):
+                    if x >= xl(i, l):
+                        li = l
+                        break
+
+                
+
+                #On retourne la valeur de la fonction en la valeur d'intérêt 
+                res =  (ordonnees_infl[k][i][li+1] - ordonnees_infl[k][i][li]) / (xl(i,li+1) - xl(i,li)) * (x - xl(i,li)) + ordonnees_infl[k][i][li]
+
+                return res
+
+        #Fonction qui renvoie la valeur de la somme des utilités pour un produit
+        def u_k(k,j, X):
+            return sum(u_k_i(k,i,j, X) for i in range(self.N_CRITERIA))
+        
+        #Fontion pour retourner la valeur de la fonction indicatrice pour l'explication des paires
+        def ind(b0, b1):
+            i = []
+            for j in range(len(b1)):
+                if b0[j] == 1 or b1[j] == 1 :
+                    i.append(1)
+            return i
+        
+
+
+
+        #Définition des différentes contraintes
+
+        #Contrainte pour garantir les premières ordonnées nulles pour chaque critère 
+        for k in range(self.K):
+            for i in range(self.N_CRITERIA):
+                self.model.addConstr(ordonnees_infl[k][i][0] == 0)
+
+        #Contrainte pour garantir la croissance des fonctions d'utilité
+        for k in range(self.K):
+            for l in range(self.N_CRITERIA):
+                for i in range(self.L - 1):
+                    self.model.addConstr(ordonnees_infl[k][i][l+1] - ordonnees_infl[k][i][l] >= self.epsilon)
+
+
+        #Contrainte pour garantir que la somme des poids vaut 1
+        for k in range(self.K):
+            self.model.addConstr(weight_sum(k, ordonnees_infl) == 1)
+
+
+        # # Constants
+        # # M is chosen to be as small as possible given the bounds on x and y. On choisit une valeur proche de 1
+        # M = 1 + self.epsilon
+
+        # # If x > y, then b = 1, otherwise b = 0
+    
+        # for j in range(len(X)):
+        #     #On ajoute les contraintes qui permettent de vérifier si une paire est expliquée ou non. Si le premier cluster n'explique pas la paire (b[j] ==0)
+        #     #Alors on vérifie que le deuxième l'explique. Sinon on ne se préoccupe pas du deuxième cluster.  
+        #     self.model.addConstr(u_k(0,j,X) >= u_k(0,j,Y) + 2*self.epsilon - M * (1 - b[0][j]), name="bigM_constr1")
+        #     self.model.addConstr(u_k(0,j,X) <= u_k(0,j,Y) + self.epsilon + M * b[0][j], name="bigM_constr2")
+        #     self.model.addConstr((b[0][j]== 0) >> (u_k(1,j,X) >= u_k(1,j,Y) + 2*self.epsilon - M * (1 - b[1][j])))
+        #     self.model.addConstr((b[0][j]== 0) >> (u_k(1,j,X) >= u_k(1,j,Y) + self.epsilon + M * b[1][j]))
+        #     self.model.addConstr((b[0][j]== 1) >> (b[1][j] == 0))
+            
+
+        #Fonction qui permet de retourner un liste contenant les utilités en chaque produit en fonction du cluster k    
+        def list_utilities_per_dataset(X):
+            Ux = np.array([[],[]])
+            
+            for j in range(len(X)):
+                Ux[0] = np.append(Ux[0], u_k(0,j,X))
+                Ux[1] = np.append(Ux[1], u_k(1,j,X))
+            return Ux 
+
+    
+
+        
+
+        
+
+        #Mise à jour du modèle après ajout des contraintes
+        self.model.update()
+        
+        # Fonction Objectif
+        self.model.setObjective( np.sum(np.sum(list_utilities_per_dataset(X) - list_utilities_per_dataset(Y) > 0, axis=1) > 0) , GRB.MAXIMIZE)
+                
+          
+        
+        # Résolution du PL
+        self.model.optimize()
+
+
+        return self.model
 
     def predict_utility(self, X):
         """Return Decision Function of the MIP for X. - To be completed.
