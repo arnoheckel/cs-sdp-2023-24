@@ -206,7 +206,7 @@ class TwoClustersMIP(BaseModel):
         
 
         #On ajoute une variable binaire pour modéliser le fait qu'un paire est effectivement expliquée par le modèle 
-        b = [[self.model.addVar(vtype=GRB.BINARY, name=f"b_{j}") for j in range(2000)] for k in range(self.K)]
+        b = [[self.model.addVar(vtype=GRB.BINARY, name=f"b_{k}_{j}") for j in range(2000)] for k in range(self.K)]
 
         #On met à jour le modèle avec les nouvelles variables
         self.model.update()
@@ -287,42 +287,47 @@ class TwoClustersMIP(BaseModel):
             self.model.addConstr(weight_sum(k, ordonnees_infl) == 1)
 
 
-        # # Constants
-        # # M is chosen to be as small as possible given the bounds on x and y. On choisit une valeur proche de 1
-        # M = 1 + self.epsilon
+        # Constants
+        # M is chosen to be as small as possible given the bounds on x and y. On choisit une valeur proche de 1
+        M = 1 + self.epsilon
 
         # # If x > y, then b = 1, otherwise b = 0
     
-        # for j in range(len(X)):
-        #     #On ajoute les contraintes qui permettent de vérifier si une paire est expliquée ou non. Si le premier cluster n'explique pas la paire (b[j] ==0)
-        #     #Alors on vérifie que le deuxième l'explique. Sinon on ne se préoccupe pas du deuxième cluster.  
-        #     self.model.addConstr(u_k(0,j,X) >= u_k(0,j,Y) + 2*self.epsilon - M * (1 - b[0][j]), name="bigM_constr1")
-        #     self.model.addConstr(u_k(0,j,X) <= u_k(0,j,Y) + self.epsilon + M * b[0][j], name="bigM_constr2")
+        for j in range(len(X)):
+            #On ajoute les contraintes qui permettent de vérifier si une paire est expliquée ou non. Si le premier cluster n'explique pas la paire (b[j] ==0)
+            #Alors on vérifie que le deuxième l'explique. Sinon on ne se préoccupe pas du deuxième cluster.  
+            self.model.addConstr(u_k(0,j,X) >= u_k(0,j,Y) + 2*self.epsilon - M * (1 - b[0][j]), name="bigM_constr1")
+            self.model.addConstr(u_k(0,j,X) <= u_k(0,j,Y) + self.epsilon + M * b[0][j], name="bigM_constr2")
+            self.model.addConstr((b[0][j]== 0) >> (u_k(1,j,X) >= u_k(1,j,Y) + self.epsilon))
+            self.model.addConstr((b[0][j]== 0) >> (b[1][j]==0))
+            self.model.addConstr((b[0][j]== 1) >> (u_k(0,j,X) <= u_k(0,j,Y) + self.epsilon + M * b[1][j]))
+
+
         #     self.model.addConstr((b[0][j]== 0) >> (u_k(1,j,X) >= u_k(1,j,Y) + 2*self.epsilon - M * (1 - b[1][j])))
         #     self.model.addConstr((b[0][j]== 0) >> (u_k(1,j,X) >= u_k(1,j,Y) + self.epsilon + M * b[1][j]))
         #     self.model.addConstr((b[0][j]== 1) >> (b[1][j] == 0))
             
 
         #Fonction qui permet de retourner un liste contenant les utilités en chaque produit en fonction du cluster k    
-        def list_utilities_per_dataset(X):
-            Ux = np.array([[],[]])
+        # def list_utilities_per_dataset(X):
+        #     Ux = [[],[]]
             
-            for j in range(len(X)):
-                Ux[0] = np.append(Ux[0], u_k(0,j,X))
-                Ux[1] = np.append(Ux[1], u_k(1,j,X))
-            return Ux 
+        #     for j in range(len(X)):
+        #         Ux[0].append(u_k(0,j,X))
+        #         Ux[1].append(u_k(1,j,X))
 
-    
+            
+        #     return Ux
 
-        
+        # #Contrainte pour garantir que toutes les paires sont expliquées par nos deux clusters
+        # self.model.addConstr(sum(sum(map(lambda x, y: x - y > 0, row_Ux, row_Uy)) > 0 for row_Ux, row_Uy in zip(list_utilities_per_dataset(X), list_utilities_per_dataset(Y))) == 2000) 
 
-        
 
         #Mise à jour du modèle après ajout des contraintes
         self.model.update()
         
         # Fonction Objectif
-        self.model.setObjective( np.sum(np.sum(list_utilities_per_dataset(X) - list_utilities_per_dataset(Y) > 0, axis=1) > 0) , GRB.MAXIMIZE)
+        self.model.setObjective( sum(b[1]), GRB.MINIMIZE)
                 
           
         
