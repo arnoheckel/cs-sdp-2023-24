@@ -179,7 +179,7 @@ class TwoClustersMIP(BaseModel):
         self.K = n_clusters
         self.L = n_pieces
         self.N_CRITERIA = 4
-        self.epsilon = 0.0001
+        self.epsilon = 0.001
         self.model = self.instantiate()
        
 
@@ -201,12 +201,13 @@ class TwoClustersMIP(BaseModel):
             (n_samples, n_features) features of unchosen elements
         """
 
-        #Ordonnées des points d'inflexion en variables
-        ordonnees_infl = [[[self.model.addVar(name=f"u_{k}_{i}_{l}") for l in range(self.L)] for i in range(self.N_CRITERIA)] for k in range(self.K)]
-        
 
-        #On ajoute une variable binaire pour modéliser le fait qu'un paire est effectivement expliquée par le modèle 
-        b = [[self.model.addVar(vtype=GRB.BINARY, name=f"b_{k}_{j}") for j in range(2000)] for k in range(self.K)]
+        ordonnees_infl = [[[self.model.addVar(name=f"u_{k}_{i}_{l}") for l in range(self.L+1)] for i in range(self.N_CRITERIA)] for k in range(self.K)]
+        sigma_plus = [[[self.model.addVar(name=f"sigma+_{k}_{i}_{prod}") for prod in range(2)] for i in range(2000)] for k in range(self.K)]
+        sigma_minus = [[[self.model.addVar(name=f"sigma-_{k}_{i}_{prod}") for prod in range(2)] for i in range(2000)] for k in range(self.K)]
+
+        #On ajoute une variable binaire pour modéliser la condition dans la contrainte sur la préférence 
+        b = [self.model.addVar(vtype=GRB.BINARY, name=f"b_{j}") for j in range(2000)]
 
         #On met à jour le modèle avec les nouvelles variables
         self.model.update()
@@ -221,14 +222,16 @@ class TwoClustersMIP(BaseModel):
         def xl(i, l):
             return mins[i] + l*(maxs[i] - mins[i])/self.L
         
-        #Fonction qui permet de récupérer la somme des poids pour chaque critère (pour la contrainte de la somme des poids valant 1)
+        def step(i):
+            return (maxs[i] - mins[i])/self.L
+        
+        
+        #Fonction qui permet de récupérer la somme des poids
         def weight_sum(k, ordo):
             somme = 0
             for i in range(self.N_CRITERIA):
                 somme += ordo[k][i][-1]
             return somme 
-
-        
 
 
 
@@ -237,34 +240,29 @@ class TwoClustersMIP(BaseModel):
             x = X[j][i]
 
             if x == maxs[i]:
-                return ordonnees_infl[k][i][self.L - 1]
+                return ordonnees_infl[k][i][self.L]
 
             else : 
-                #On récupère la première des 5 abscisses de points d'inflexion inférieure à la valeur d'intérêt 
-                for l in range(self.L):
-                    if x >= xl(i, l):
-                        li = l
-                        break
-
+           
                 
+                li = int((x - mins[i]) / step(i))
+
+                    
 
                 #On retourne la valeur de la fonction en la valeur d'intérêt 
-                res =  (ordonnees_infl[k][i][li+1] - ordonnees_infl[k][i][li]) / (xl(i,li+1) - xl(i,li)) * (x - xl(i,li)) + ordonnees_infl[k][i][li]
+                res =  (ordonnees_infl[k][i][li+1] - ordonnees_infl[k][i][li]) / (step(i)) * (x - xl(i,li)) + ordonnees_infl[k][i][li]
 
                 return res
 
         #Fonction qui renvoie la valeur de la somme des utilités pour un produit
         def u_k(k,j, X):
             return sum(u_k_i(k,i,j, X) for i in range(self.N_CRITERIA))
-        
-        #Fontion pour retourner la valeur de la fonction indicatrice pour l'explication des paires
-        def ind(b0, b1):
-            i = []
-            for j in range(len(b1)):
-                if b0[j] == 1 or b1[j] == 1 :
-                    i.append(1)
-            return i
-        
+
+        #Fonction qui retourne la valeur de la fonction d'utilité pour un élément avec les erreurs sigma
+        def tot(k,j,X, prod):
+            return u_k(k, j, X) - sigma_plus[k][j][prod] + sigma_minus[k][j][prod]
+
+
 
 
 
@@ -279,55 +277,41 @@ class TwoClustersMIP(BaseModel):
         for k in range(self.K):
             for l in range(self.N_CRITERIA):
                 for i in range(self.L - 1):
-                    self.model.addConstr(ordonnees_infl[k][i][l+1] - ordonnees_infl[k][i][l] >= self.epsilon)
+                    self.model.addConstr(ordonnees_infl[k][i][l+1] - ordonnees_infl[k][i][l] >= 0)
 
 
         #Contrainte pour garantir que la somme des poids vaut 1
         for k in range(self.K):
             self.model.addConstr(weight_sum(k, ordonnees_infl) == 1)
 
+        
+        #COntraintes pour modéliser la condition dans la contrainte des préférences
 
         # Constants
         # M is chosen to be as small as possible given the bounds on x and y. On choisit une valeur proche de 1
         M = 1 + self.epsilon
 
-        # # If x > y, then b = 1, otherwise b = 0
-    
+        # If x > y, then b = 1, otherwise b = 0
         for j in range(len(X)):
-            #On ajoute les contraintes qui permettent de vérifier si une paire est expliquée ou non. Si le premier cluster n'explique pas la paire (b[j] ==0)
-            #Alors on vérifie que le deuxième l'explique. Sinon on ne se préoccupe pas du deuxième cluster.  
-            self.model.addConstr(u_k(0,j,X) >= u_k(0,j,Y) + 2*self.epsilon - M * (1 - b[0][j]), name="bigM_constr1")
-            self.model.addConstr(u_k(0,j,X) <= u_k(0,j,Y) + self.epsilon + M * b[0][j], name="bigM_constr2")
-            self.model.addConstr((b[0][j]== 0) >> (u_k(1,j,X) >= u_k(1,j,Y) + self.epsilon))
-            self.model.addConstr((b[0][j]== 0) >> (b[1][j]==0))
-            self.model.addConstr((b[0][j]== 1) >> (u_k(0,j,X) <= u_k(0,j,Y) + self.epsilon + M * b[1][j]))
+            self.model.addConstr(tot(0,j,X,0) >= tot(0,j,Y,1) + 2*self.epsilon - M * (1 - b[j]), name="bigM_constr1")
+            self.model.addConstr(tot(0,j,X,0) <= tot(0,j,Y,1) + self.epsilon + M * b[j], name="bigM_constr2")
 
+        #Contrainte pour garantir qu'au moins un des deux clusters explique chaque paire comparée. 
+        for j in range(len(X)):
+            self.model.addConstr((b[j] == 0) >> (tot(1,j,X,0) >= tot(1,j,Y,1) + self.epsilon))
 
-        #     self.model.addConstr((b[0][j]== 0) >> (u_k(1,j,X) >= u_k(1,j,Y) + 2*self.epsilon - M * (1 - b[1][j])))
-        #     self.model.addConstr((b[0][j]== 0) >> (u_k(1,j,X) >= u_k(1,j,Y) + self.epsilon + M * b[1][j]))
-        #     self.model.addConstr((b[0][j]== 1) >> (b[1][j] == 0))
-            
-
-        #Fonction qui permet de retourner un liste contenant les utilités en chaque produit en fonction du cluster k    
-        # def list_utilities_per_dataset(X):
-        #     Ux = [[],[]]
-            
-        #     for j in range(len(X)):
-        #         Ux[0].append(u_k(0,j,X))
-        #         Ux[1].append(u_k(1,j,X))
-
-            
-        #     return Ux
-
-        # #Contrainte pour garantir que toutes les paires sont expliquées par nos deux clusters
-        # self.model.addConstr(sum(sum(map(lambda x, y: x - y > 0, row_Ux, row_Uy)) > 0 for row_Ux, row_Uy in zip(list_utilities_per_dataset(X), list_utilities_per_dataset(Y))) == 2000) 
-
+        #Contrainte pour avoir tous les sigmas positifs
+        for k in range(self.K):
+            for j in range(len(X)):
+                for prod in range(2):
+                    self.model.addConstr(sigma_minus[k][j][prod] >= 0)
+                    self.model.addConstr(sigma_plus[k][j][prod] >= 0)
 
         #Mise à jour du modèle après ajout des contraintes
         self.model.update()
         
         # Fonction Objectif
-        self.model.setObjective( sum(b[1]), GRB.MINIMIZE)
+        self.model.setObjective(sum([sum(j) for j in sigma_plus[0]]) + sum([sum(j) for j in sigma_minus[0]]) + sum([sum(j) for j in sigma_plus[1]]) + sum([sum(j) for j in sigma_minus[1]]), GRB.MINIMIZE)
                 
           
         
