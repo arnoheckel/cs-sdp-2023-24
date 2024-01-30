@@ -102,6 +102,7 @@ class ClusterIntersection(BaseMetric):
         -------
         float Percentage of pairs attributed regrouped within same cluster in prediction compared to ground truth
         """
+        print(z_pred.shape, z_true.shape)
         assert z_true.shape == z_pred.shape
 
         truepos_plus_falsepos = comb(np.bincount(z_true), 2).sum()

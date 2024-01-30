@@ -84,7 +84,7 @@ class BaseModel(object):
         X_u = self.predict_utility(X)
         Y_u = self.predict_utility(Y)
 
-        return np.argmax(X_u - Y_u, axis=1)
+        return np.argmax(X_u - Y_u, axis=0)
 
     def save_model(self, path):
         """Save the model in a pickle file. Don't hesitate to change it in the child class if needed
@@ -204,23 +204,28 @@ class TwoClustersMIP(BaseModel):
         Y: np.ndarray
             (n_samples, n_features) features of unchosen elements
         """
+        A = np.concatenate((X,Y), axis = 0)
+        self.mins = A.min(axis=0)
+        self.maxs = A.max(axis=0)
+
+        X = X[:300]
+        Y = Y[:300]
 
 
         ordonnees_infl = [[[self.model.addVar(name=f"u_{k}_{i}_{l}") for l in range(self.L+1)] for i in range(self.N_CRITERIA)] for k in range(self.K)]
-        sigma_plus = [[[self.model.addVar(name=f"sigma+_{k}_{i}_{prod}") for prod in range(2)] for i in range(2000)] for k in range(self.K)]
-        sigma_minus = [[[self.model.addVar(name=f"sigma-_{k}_{i}_{prod}") for prod in range(2)] for i in range(2000)] for k in range(self.K)]
+        sigma_plus = [[[self.model.addVar(name=f"sigma+_{k}_{i}_{prod}") for prod in range(2)] for i in range(len(X))] for k in range(self.K)]
+        sigma_minus = [[[self.model.addVar(name=f"sigma-_{k}_{i}_{prod}") for prod in range(2)] for i in range(len(X))] for k in range(self.K)]
 
         #On ajoute une variable binaire pour modéliser la condition dans la contrainte sur la préférence 
-        b = [self.model.addVar(vtype=GRB.BINARY, name=f"b_{j}") for j in range(2000)]
+        b = [self.model.addVar(vtype=GRB.BINARY, name=f"b_{j}") for j in range(len(X))]
 
         #On met à jour le modèle avec les nouvelles variables
         self.model.update()
 
         #On détermine les valeurs maximales et minimales pour chaque critère d'évaluation 
-        A = np.concatenate((X,Y), axis = 0)
-        self.mins = A.min(axis=0)
-        self.maxs = A.max(axis=0)
+       
 
+        
 
         #Fonction pour récupèrer les abscisses des points d'inflexion
         def xl(i, l):
@@ -347,6 +352,7 @@ class TwoClustersMIP(BaseModel):
             x = X[j][i]
 
             if x == self.maxs[i]:
+                print("here")
                 return self.model.getVarByName(f"u_{k}_{i}_{self.L}").x
 
             else : 
@@ -355,7 +361,7 @@ class TwoClustersMIP(BaseModel):
    
                 #On retourne la valeur de la fonction en la valeur d'intérêt 
                 res =  ( self.model.getVarByName(f"u_{k}_{i}_{li+1}").x - self.model.getVarByName(f"u_{k}_{i}_{li}").x) / (step(i)) * (x - xl(i,li)) + self.model.getVarByName(f"u_{k}_{i}_{li}").x
-
+                
                 return res
             
           #Fonction qui renvoie la valeur de la somme des utilités pour un produit
