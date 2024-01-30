@@ -181,6 +181,10 @@ class TwoClustersMIP(BaseModel):
         self.N_CRITERIA = 4
         self.epsilon = 0.001
         self.model = self.instantiate()
+        self.mins = 0
+        self.maxs = 0
+
+
        
 
     def instantiate(self):
@@ -214,16 +218,16 @@ class TwoClustersMIP(BaseModel):
 
         #On détermine les valeurs maximales et minimales pour chaque critère d'évaluation 
         A = np.concatenate((X,Y), axis = 0)
-        mins = A.min(axis=0)
-        maxs = A.max(axis=0)
+        self.mins = A.min(axis=0)
+        self.maxs = A.max(axis=0)
 
 
         #Fonction pour récupèrer les abscisses des points d'inflexion
         def xl(i, l):
-            return mins[i] + l*(maxs[i] - mins[i])/self.L
+            return self.mins[i] + l*(self.maxs[i] - self.mins[i])/self.L
         
         def step(i):
-            return (maxs[i] - mins[i])/self.L
+            return (self.maxs[i] - self.mins[i])/self.L
         
         
         #Fonction qui permet de récupérer la somme des poids
@@ -239,15 +243,12 @@ class TwoClustersMIP(BaseModel):
         def u_k_i(k,i,j,X):
             x = X[j][i]
 
-            if x == maxs[i]:
+            if x == self.maxs[i]:
                 return ordonnees_infl[k][i][self.L]
 
             else : 
-           
                 
-                li = int((x - mins[i]) / step(i))
-
-                    
+                li = int((x - self.mins[i]) / step(i))
 
                 #On retourne la valeur de la fonction en la valeur d'intérêt 
                 res =  (ordonnees_infl[k][i][li+1] - ordonnees_infl[k][i][li]) / (step(i)) * (x - xl(i,li)) + ordonnees_infl[k][i][li]
@@ -331,7 +332,38 @@ class TwoClustersMIP(BaseModel):
         """
         # To be completed
         # Do not forget that this method is called in predict_preference (line 42) and therefor should return well-organized data for it to work.
-        return
+
+        #Fonction qui renvoie la valeur de la fonction d'utilité pour un critère i en n'importe quel point X[j] 
+
+        #Fonction pour récupèrer les abscisses des points d'inflexion
+        def xl(i, l):
+            return self.mins[i] + l*(self.maxs[i] - self.mins[i])/self.L
+        
+        
+        def step(i):
+            return (self.maxs[i] - self.mins[i])/self.L
+
+        def u_k_i(k,i,j,X):
+            x = X[j][i]
+
+            if x == self.maxs[i]:
+                return self.model.getVarByName(f"u_{k}_{i}_{self.L}").x
+
+            else : 
+
+                li = int((x - self.mins[i]) / step(i))
+   
+                #On retourne la valeur de la fonction en la valeur d'intérêt 
+                res =  ( self.model.getVarByName(f"u_{k}_{i}_{li+1}").x - self.model.getVarByName(f"u_{k}_{i}_{li}").x) / (step(i)) * (x - xl(i,li)) + self.model.getVarByName(f"u_{k}_{i}_{li}").x
+
+                return res
+            
+          #Fonction qui renvoie la valeur de la somme des utilités pour un produit
+        def u_k(k,j, X):
+            return sum(u_k_i(k,i,j, X) for i in range(self.N_CRITERIA))
+
+            
+        return np.stack([np.array([u_k(0,j,X), u_k(1,j,X)]) for j in range(len(X))], axis=1)
 
 
 class HeuristicModel(BaseModel):
