@@ -37,14 +37,14 @@ if __name__ == "__main__":
     A = np.concatenate((X, Y), axis=0)
     all_mins = A.min(axis=0)
     all_maxs = A.max(axis=0)
-    print(f"all_mins: {all_mins}\n all_maxs: {all_maxs}")
+    # print(f"all_mins: {all_mins}\n all_maxs: {all_maxs}")
 
-    indexes = np.linspace(0, len(X) - 1, num=10000, dtype=int)  # len(X)
+    indexes = np.linspace(0, len(X) - 1, num=5000, dtype=int)  # len(X)
     np.random.shuffle(indexes)
     train_indexes = indexes[: int(len(indexes) * 0.8)]
     test_indexes = indexes[int(len(indexes) * 0.8) :]
 
-    print(train_indexes, test_indexes)
+    # print(train_indexes, test_indexes)
     X_train = X[train_indexes]
     Y_train = Y[train_indexes]
     model = HeuristicModel(all_mins, all_maxs, n_clusters=3)
