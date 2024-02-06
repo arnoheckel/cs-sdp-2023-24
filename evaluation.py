@@ -39,7 +39,7 @@ if __name__ == "__main__":
     all_maxs = A.max(axis=0)
     # print(f"all_mins: {all_mins}\n all_maxs: {all_maxs}")
 
-    indexes = np.linspace(0, len(X) - 1, num=5000, dtype=int)  # len(X)
+    indexes = np.linspace(0, len(X) - 1, num=2000, dtype=int)  # len(X)
     np.random.shuffle(indexes)
     train_indexes = indexes[: int(len(indexes) * 0.8)]
     test_indexes = indexes[int(len(indexes) * 0.8) :]
