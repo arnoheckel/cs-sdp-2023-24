@@ -10,30 +10,36 @@ from models import HeuristicModel, TwoClustersMIP
 
 if __name__ == "__main__":
     ### First part: test of the MIP model
-    data_loader = Dataloader("data/dataset_4_test")  # Path to test dataset
-    X, Y = data_loader.load()
+    # data_loader = Dataloader("data/dataset_4_test")  # Path to test dataset
+    # X, Y = data_loader.load()
 
-    model = TwoClustersMIP(
-        n_clusters=2, n_pieces=5
-    )  # You can add your model's arguments here, the best would be set up the right ones as default.
-    model.fit(X, Y)
+    # model = TwoClustersMIP(
+    #     n_clusters=2, n_pieces=5
+    # )  # You can add your model's arguments here, the best would be set up the right ones as default.
+    # model.fit(X, Y)
 
-    # %Pairs Explained
-    pairs_explained = metrics.PairsExplained()
-    print("Percentage of explained preferences:", pairs_explained.from_model(model, X, Y))
+    # # %Pairs Explained
+    # pairs_explained = metrics.PairsExplained()
+    # print("Percentage of explained preferences:", pairs_explained.from_model(model, X, Y))
 
-    # %Cluster Intersection
-    cluster_intersection = metrics.ClusterIntersection()
+    # # %Cluster Intersection
+    # cluster_intersection = metrics.ClusterIntersection()
 
-    Z = data_loader.get_ground_truth_labels()
-    print("% of pairs well grouped together by the model:")
-    print("Cluster intersection for all samples:", cluster_intersection.from_model(model, X, Y, Z))
+    # Z = data_loader.get_ground_truth_labels()
+    # print("% of pairs well grouped together by the model:")
+    # print("Cluster intersection for all samples:", cluster_intersection.from_model(model, X, Y, Z))
 
     ### 2nd part: test of the heuristic model
-    data_loader = Dataloader("data/dataset_10_test")  # Path to test dataset
+    data_loader = Dataloader("data/dataset_10")  # Path to test dataset # _test
     X, Y = data_loader.load()
 
-    indexes = np.linspace(0, len(X) - 1, num=len(X), dtype=int)
+    # Compute mins and maxs on the whole dataset
+    A = np.concatenate((X, Y), axis=0)
+    all_mins = A.min(axis=0)
+    all_maxs = A.max(axis=0)
+    print(f"all_mins: {all_mins}\n all_maxs: {all_maxs}")
+
+    indexes = np.linspace(0, len(X) - 1, num=10000, dtype=int)  # len(X)
     np.random.shuffle(indexes)
     train_indexes = indexes[: int(len(indexes) * 0.8)]
     test_indexes = indexes[int(len(indexes) * 0.8) :]
@@ -41,7 +47,7 @@ if __name__ == "__main__":
     print(train_indexes, test_indexes)
     X_train = X[train_indexes]
     Y_train = Y[train_indexes]
-    model = HeuristicModel(n_clusters=3)
+    model = HeuristicModel(all_mins, all_maxs, n_clusters=3)
     model.fit(X_train, Y_train)
 
     X_test = X[test_indexes]
@@ -51,7 +57,10 @@ if __name__ == "__main__":
     # Validation on test set
     # %Pairs Explained
     pairs_explained = metrics.PairsExplained()
-    print("Percentage of explained preferences:", pairs_explained.from_model(model, X_test, Y_test))
+    print(
+        "Percentage of explained preferences:",
+        pairs_explained.from_model(model, X_test, Y_test),
+    )
 
     # %Cluster Intersection
     cluster_intersection = metrics.ClusterIntersection()

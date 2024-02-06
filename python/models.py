@@ -154,10 +154,10 @@ class RandomExampleModel(BaseModel):
         X: np.ndarray
             (n_samples, n_features) list of features of elements
         """
-        
 
-        return np.stack([np.dot(X, self.weights[0]), np.dot(X, self.weights[1])], axis=1)
-        
+        return np.stack(
+            [np.dot(X, self.weights[0]), np.dot(X, self.weights[1])], axis=1
+        )
 
 
 class TwoClustersMIP(BaseModel):
@@ -184,9 +184,6 @@ class TwoClustersMIP(BaseModel):
         self.mins = 0
         self.maxs = 0
 
-
-       
-
     def instantiate(self):
         """Instantiation of the MIP Variables - To be completed."""
 
@@ -204,94 +201,102 @@ class TwoClustersMIP(BaseModel):
         Y: np.ndarray
             (n_samples, n_features) features of unchosen elements
         """
-        A = np.concatenate((X,Y), axis = 0)
+        A = np.concatenate((X, Y), axis=0)
         self.mins = A.min(axis=0)
         self.maxs = A.max(axis=0)
 
         X = X[:300]
         Y = Y[:300]
 
+        ordonnees_infl = [
+            [
+                [self.model.addVar(name=f"u_{k}_{i}_{l}") for l in range(self.L + 1)]
+                for i in range(self.N_CRITERIA)
+            ]
+            for k in range(self.K)
+        ]
+        sigma_plus = [
+            [
+                [self.model.addVar(name=f"sigma+_{k}_{i}_{prod}") for prod in range(2)]
+                for i in range(len(X))
+            ]
+            for k in range(self.K)
+        ]
+        sigma_minus = [
+            [
+                [self.model.addVar(name=f"sigma-_{k}_{i}_{prod}") for prod in range(2)]
+                for i in range(len(X))
+            ]
+            for k in range(self.K)
+        ]
 
-        ordonnees_infl = [[[self.model.addVar(name=f"u_{k}_{i}_{l}") for l in range(self.L+1)] for i in range(self.N_CRITERIA)] for k in range(self.K)]
-        sigma_plus = [[[self.model.addVar(name=f"sigma+_{k}_{i}_{prod}") for prod in range(2)] for i in range(len(X))] for k in range(self.K)]
-        sigma_minus = [[[self.model.addVar(name=f"sigma-_{k}_{i}_{prod}") for prod in range(2)] for i in range(len(X))] for k in range(self.K)]
-
-        #On ajoute une variable binaire pour modéliser la condition dans la contrainte sur la préférence 
+        # On ajoute une variable binaire pour modéliser la condition dans la contrainte sur la préférence
         b = [self.model.addVar(vtype=GRB.BINARY, name=f"b_{j}") for j in range(len(X))]
 
-        #On met à jour le modèle avec les nouvelles variables
+        # On met à jour le modèle avec les nouvelles variables
         self.model.update()
 
-        #On détermine les valeurs maximales et minimales pour chaque critère d'évaluation 
-       
+        # On détermine les valeurs maximales et minimales pour chaque critère d'évaluation
 
-        
-
-        #Fonction pour récupèrer les abscisses des points d'inflexion
+        # Fonction pour récupèrer les abscisses des points d'inflexion
         def xl(i, l):
-            return self.mins[i] + l*(self.maxs[i] - self.mins[i])/self.L
-        
+            return self.mins[i] + l * (self.maxs[i] - self.mins[i]) / self.L
+
         def step(i):
-            return (self.maxs[i] - self.mins[i])/self.L
-        
-        
-        #Fonction qui permet de récupérer la somme des poids
+            return (self.maxs[i] - self.mins[i]) / self.L
+
+        # Fonction qui permet de récupérer la somme des poids
         def weight_sum(k, ordo):
             somme = 0
             for i in range(self.N_CRITERIA):
                 somme += ordo[k][i][-1]
-            return somme 
+            return somme
 
-
-
-        #Fonction qui renvoie la valeur de la fonction d'utilité pour un critère i en n'importe quel point X[j] 
-        def u_k_i(k,i,j,X):
+        # Fonction qui renvoie la valeur de la fonction d'utilité pour un critère i en n'importe quel point X[j]
+        def u_k_i(k, i, j, X):
             x = X[j][i]
 
             if x == self.maxs[i]:
                 return ordonnees_infl[k][i][self.L]
 
-            else : 
-                
+            else:
                 li = int((x - self.mins[i]) / step(i))
 
-                #On retourne la valeur de la fonction en la valeur d'intérêt 
-                res =  (ordonnees_infl[k][i][li+1] - ordonnees_infl[k][i][li]) / (step(i)) * (x - xl(i,li)) + ordonnees_infl[k][i][li]
+                # On retourne la valeur de la fonction en la valeur d'intérêt
+                res = (ordonnees_infl[k][i][li + 1] - ordonnees_infl[k][i][li]) / (
+                    step(i)
+                ) * (x - xl(i, li)) + ordonnees_infl[k][i][li]
 
                 return res
 
-        #Fonction qui renvoie la valeur de la somme des utilités pour un produit
-        def u_k(k,j, X):
-            return sum(u_k_i(k,i,j, X) for i in range(self.N_CRITERIA))
+        # Fonction qui renvoie la valeur de la somme des utilités pour un produit
+        def u_k(k, j, X):
+            return sum(u_k_i(k, i, j, X) for i in range(self.N_CRITERIA))
 
-        #Fonction qui retourne la valeur de la fonction d'utilité pour un élément avec les erreurs sigma
-        def tot(k,j,X, prod):
+        # Fonction qui retourne la valeur de la fonction d'utilité pour un élément avec les erreurs sigma
+        def tot(k, j, X, prod):
             return u_k(k, j, X) - sigma_plus[k][j][prod] + sigma_minus[k][j][prod]
 
+        # Définition des différentes contraintes
 
-
-
-
-        #Définition des différentes contraintes
-
-        #Contrainte pour garantir les premières ordonnées nulles pour chaque critère 
+        # Contrainte pour garantir les premières ordonnées nulles pour chaque critère
         for k in range(self.K):
             for i in range(self.N_CRITERIA):
                 self.model.addConstr(ordonnees_infl[k][i][0] == 0)
 
-        #Contrainte pour garantir la croissance des fonctions d'utilité
+        # Contrainte pour garantir la croissance des fonctions d'utilité
         for k in range(self.K):
-            for l in range(self.N_CRITERIA):
-                for i in range(self.L - 1):
-                    self.model.addConstr(ordonnees_infl[k][i][l+1] - ordonnees_infl[k][i][l] >= 0)
+            for i in range(self.N_CRITERIA):
+                for l in range(self.L - 1):
+                    self.model.addConstr(
+                        ordonnees_infl[k][i][l + 1] - ordonnees_infl[k][i][l] >= 0
+                    )
 
-
-        #Contrainte pour garantir que la somme des poids vaut 1
+        # Contrainte pour garantir que la somme des poids vaut 1
         for k in range(self.K):
             self.model.addConstr(weight_sum(k, ordonnees_infl) == 1)
 
-        
-        #COntraintes pour modéliser la condition dans la contrainte des préférences
+        # COntraintes pour modéliser la condition dans la contrainte des préférences
 
         # Constants
         # M is chosen to be as small as possible given the bounds on x and y. On choisit une valeur proche de 1
@@ -299,31 +304,42 @@ class TwoClustersMIP(BaseModel):
 
         # If x > y, then b = 1, otherwise b = 0
         for j in range(len(X)):
-            self.model.addConstr(tot(0,j,X,0) >= tot(0,j,Y,1) + 2*self.epsilon - M * (1 - b[j]), name="bigM_constr1")
-            self.model.addConstr(tot(0,j,X,0) <= tot(0,j,Y,1) + self.epsilon + M * b[j], name="bigM_constr2")
+            self.model.addConstr(
+                tot(0, j, X, 0) >= tot(0, j, Y, 1) + 2 * self.epsilon - M * (1 - b[j]),
+                name="bigM_constr1",
+            )
+            self.model.addConstr(
+                tot(0, j, X, 0) <= tot(0, j, Y, 1) + self.epsilon + M * b[j],
+                name="bigM_constr2",
+            )
 
-        #Contrainte pour garantir qu'au moins un des deux clusters explique chaque paire comparée. 
+        # Contrainte pour garantir qu'au moins un des deux clusters explique chaque paire comparée.
         for j in range(len(X)):
-            self.model.addConstr((b[j] == 0) >> (tot(1,j,X,0) >= tot(1,j,Y,1) + self.epsilon))
+            self.model.addConstr(
+                (b[j] == 0) >> (tot(1, j, X, 0) >= tot(1, j, Y, 1) + self.epsilon)
+            )
 
-        #Contrainte pour avoir tous les sigmas positifs
+        # Contrainte pour avoir tous les sigmas positifs
         for k in range(self.K):
             for j in range(len(X)):
                 for prod in range(2):
                     self.model.addConstr(sigma_minus[k][j][prod] >= 0)
                     self.model.addConstr(sigma_plus[k][j][prod] >= 0)
 
-        #Mise à jour du modèle après ajout des contraintes
+        # Mise à jour du modèle après ajout des contraintes
         self.model.update()
-        
+
         # Fonction Objectif
-        self.model.setObjective(sum([sum(j) for j in sigma_plus[0]]) + sum([sum(j) for j in sigma_minus[0]]) + sum([sum(j) for j in sigma_plus[1]]) + sum([sum(j) for j in sigma_minus[1]]), GRB.MINIMIZE)
-                
-          
-        
+        self.model.setObjective(
+            sum([sum(j) for j in sigma_plus[0]])
+            + sum([sum(j) for j in sigma_minus[0]])
+            + sum([sum(j) for j in sigma_plus[1]])
+            + sum([sum(j) for j in sigma_minus[1]]),
+            GRB.MINIMIZE,
+        )
+
         # Résolution du PL
         self.model.optimize()
-
 
         return self.model
 
@@ -338,38 +354,42 @@ class TwoClustersMIP(BaseModel):
         # To be completed
         # Do not forget that this method is called in predict_preference (line 42) and therefor should return well-organized data for it to work.
 
-        #Fonction qui renvoie la valeur de la fonction d'utilité pour un critère i en n'importe quel point X[j] 
+        # Fonction qui renvoie la valeur de la fonction d'utilité pour un critère i en n'importe quel point X[j]
 
-        #Fonction pour récupèrer les abscisses des points d'inflexion
+        # Fonction pour récupèrer les abscisses des points d'inflexion
         def xl(i, l):
-            return self.mins[i] + l*(self.maxs[i] - self.mins[i])/self.L
-        
-        
-        def step(i):
-            return (self.maxs[i] - self.mins[i])/self.L
+            return self.mins[i] + l * (self.maxs[i] - self.mins[i]) / self.L
 
-        def u_k_i(k,i,j,X):
+        def step(i):
+            return (self.maxs[i] - self.mins[i]) / self.L
+
+        def u_k_i(k, i, j, X):
             x = X[j][i]
 
             if x == self.maxs[i]:
                 print("here")
                 return self.model.getVarByName(f"u_{k}_{i}_{self.L}").x
 
-            else : 
-
+            else:
                 li = int((x - self.mins[i]) / step(i))
-   
-                #On retourne la valeur de la fonction en la valeur d'intérêt 
-                res =  ( self.model.getVarByName(f"u_{k}_{i}_{li+1}").x - self.model.getVarByName(f"u_{k}_{i}_{li}").x) / (step(i)) * (x - xl(i,li)) + self.model.getVarByName(f"u_{k}_{i}_{li}").x
-                
-                return res
-            
-          #Fonction qui renvoie la valeur de la somme des utilités pour un produit
-        def u_k(k,j, X):
-            return sum(u_k_i(k,i,j, X) for i in range(self.N_CRITERIA))
 
-            
-        return np.stack([np.array([u_k(0,j,X), u_k(1,j,X)]) for j in range(len(X))], axis=1)
+                # On retourne la valeur de la fonction en la valeur d'intérêt
+                res = (
+                    self.model.getVarByName(f"u_{k}_{i}_{li+1}").x
+                    - self.model.getVarByName(f"u_{k}_{i}_{li}").x
+                ) / (step(i)) * (x - xl(i, li)) + self.model.getVarByName(
+                    f"u_{k}_{i}_{li}"
+                ).x
+
+                return res
+
+        # Fonction qui renvoie la valeur de la somme des utilités pour un produit
+        def u_k(k, j, X):
+            return sum(u_k_i(k, i, j, X) for i in range(self.N_CRITERIA))
+
+        return np.stack(
+            [np.array([u_k(0, j, X), u_k(1, j, X)]) for j in range(len(X))], axis=1
+        )
 
 
 class HeuristicModel(BaseModel):
@@ -377,16 +397,31 @@ class HeuristicModel(BaseModel):
     You have to encapsulate your code within this class that will be called for evaluation.
     """
 
-    def __init__(self):
+    def __init__(self, all_mins, all_maxs, n_clusters=3):
         """Initialization of the Heuristic Model.
+
+        Parameters
+        ----------
+        n_pieces: int
+            Number of pieces for the utility function of each feature.
+        n°clusters: int
+            Number of clusters to implement in the MIP.
         """
         self.seed = 123
-        self.models = self.instantiate()
+        self.K = n_clusters
+        self.L = 5
+        self.N_CRITERIA = 10
+        self.epsilon = 0.001
+        self.model = self.instantiate()
+        self.mins = all_mins
+        self.maxs = all_maxs
 
     def instantiate(self):
-        """Instantiation of the MIP Variables"""
-        # To be completed
-        return
+        """Instantiation of the MIP Variables."""
+
+        # Instanciation du modèle
+        m = Model("MIP model")
+        return m
 
     def fit(self, X, Y):
         """Estimation of the parameters - To be completed.
@@ -398,8 +433,162 @@ class HeuristicModel(BaseModel):
         Y: np.ndarray
             (n_samples, n_features) features of unchosen elements
         """
-        # To be completed
-        return
+
+        # On détermine les valeurs maximales et minimales pour chaque critère d'évaluation
+
+        ordonnees_infl = [
+            [
+                [self.model.addVar(name=f"u_{k}_{i}_{l}") for l in range(self.L + 1)]
+                for i in range(self.N_CRITERIA)
+            ]
+            for k in range(self.K)
+        ]
+        sigma_plus = [
+            [
+                [self.model.addVar(name=f"sigma+_{k}_{i}_{prod}") for prod in range(2)]
+                for i in range(len(X))
+            ]
+            for k in range(self.K)
+        ]
+        sigma_minus = [
+            [
+                [self.model.addVar(name=f"sigma-_{k}_{i}_{prod}") for prod in range(2)]
+                for i in range(len(X))
+            ]
+            for k in range(self.K)
+        ]
+
+        # On ajoute deux variables binaire pour modéliser la condition dans la contrainte sur la préférence (3 clusters)
+        b = [self.model.addVar(vtype=GRB.BINARY, name=f"b_{j}") for j in range(len(X))]
+        b2 = [
+            self.model.addVar(vtype=GRB.BINARY, name=f"b2_{j}") for j in range(len(X))
+        ]
+
+        # On met à jour le modèle avec les nouvelles variables
+        self.model.update()
+
+        # Fonction pour récupèrer les abscisses des points d'inflexion
+        def xl(i, l):
+            return self.mins[i] + l * (self.maxs[i] - self.mins[i]) / self.L
+
+        def step(i):
+            return (self.maxs[i] - self.mins[i]) / self.L
+
+        # Fonction qui permet de récupérer la somme des poids
+        def weight_sum(k, ordo):
+            somme = 0
+            for i in range(self.N_CRITERIA):
+                somme += ordo[k][i][-1]
+            return somme
+
+        # Fonction qui renvoie la valeur de la fonction d'utilité pour un critère i en n'importe quel point X[j]
+        def u_k_i(k, i, j, X):
+            x = X[j][i]
+
+            if x == self.maxs[i]:
+                return ordonnees_infl[k][i][self.L]
+
+            else:
+                li = int((x - self.mins[i]) / step(i))
+
+                # On retourne la valeur de la fonction en la valeur d'intérêt
+                res = (ordonnees_infl[k][i][li + 1] - ordonnees_infl[k][i][li]) / (
+                    step(i)
+                ) * (x - xl(i, li)) + ordonnees_infl[k][i][li]
+
+                return res
+
+        # Fonction qui renvoie la valeur de la somme des utilités pour un produit
+        def u_k(k, j, X):
+            return sum(u_k_i(k, i, j, X) for i in range(self.N_CRITERIA))
+
+        # Fonction qui retourne la valeur de la fonction d'utilité pour un élément avec les erreurs sigma
+        def tot(k, j, X, prod):
+            return u_k(k, j, X) - sigma_plus[k][j][prod] + sigma_minus[k][j][prod]
+
+        # Définition des différentes contraintes
+
+        # Contrainte pour garantir les premières ordonnées nulles pour chaque critère
+        for k in range(self.K):
+            for i in range(self.N_CRITERIA):
+                self.model.addConstr(ordonnees_infl[k][i][0] == 0)
+
+        # Contrainte pour garantir la croissance des fonctions d'utilité
+        for k in range(self.K):
+            for i in range(self.N_CRITERIA):
+                for l in range(self.L - 1):
+                    self.model.addConstr(
+                        ordonnees_infl[k][i][l + 1] - ordonnees_infl[k][i][l] >= 0
+                    )
+
+        # Contrainte pour garantir que la somme des poids vaut 1
+        for k in range(self.K):
+            self.model.addConstr(weight_sum(k, ordonnees_infl) == 1)
+
+        # COntraintes pour modéliser la condition dans la contrainte des préférences
+
+        # Constants
+        # M is chosen to be as small as possible given the bounds on x and y. On choisit une valeur proche de 1
+        M = 1 + self.epsilon
+
+        # On veut obliger chaque paire à être expliquée par un des trois clusters
+        for j in range(len(X)):
+            self.model.addConstr(
+                tot(0, j, X, 0) >= tot(0, j, Y, 1) + 2 * self.epsilon - M * (1 - b[j]),
+                name="bigM_constr1",
+            )
+            self.model.addConstr(
+                tot(0, j, X, 0) <= tot(0, j, Y, 1) + self.epsilon + M * b[j],
+                name="bigM_constr2",
+            )
+
+        # Contrainte pour garantir qu'au moins un des trois clusters explique chaque paire comparée.
+        # Si le cluster 1 n'est pas choisi, alors un des clusters (2, 3) doit l'être
+        # Si le cluster 2 n'est pas choisi, alors le cluster 3 doit l'être
+        for j in range(len(X)):
+            self.model.addConstr(
+                (b[j] == 0)
+                >> (
+                    tot(1, j, X, 0)
+                    >= tot(1, j, Y, 1) + 2 * self.epsilon - M * (1 - b2[j])
+                ),
+                name="bigM_constr3",
+            )
+            self.model.addConstr(
+                (b[j] == 0)
+                >> (tot(1, j, X, 0) <= tot(1, j, Y, 1) + self.epsilon + M * b2[j]),
+                name="bigM_constr4",
+            )
+
+        for j in range(len(X)):
+            self.model.addConstr(
+                (b2[j] == 0) >> (tot(2, j, X, 0) >= tot(2, j, Y, 1) + self.epsilon),
+                "bigM_constr5",
+            )
+
+        # Contrainte pour avoir tous les sigmas positifs
+        for k in range(self.K):
+            for j in range(len(X)):
+                for prod in range(2):
+                    self.model.addConstr(sigma_minus[k][j][prod] >= 0)
+                    self.model.addConstr(sigma_plus[k][j][prod] >= 0)
+
+        # Mise à jour du modèle après ajout des contraintes
+        self.model.update()
+
+        # Fonction Objectif
+        self.model.setObjective(
+            sum([sum(j) for j in sigma_plus[0]])
+            + sum([sum(j) for j in sigma_minus[0]])
+            + sum([sum(j) for j in sigma_plus[1]])
+            + sum([sum(j) for j in sigma_minus[1]]),
+            GRB.MINIMIZE,
+        )
+
+        # Résolution du PL
+        self.model.optimize()
+
+        return self.model
 
     def predict_utility(self, X):
         """Return Decision Function of the MIP for X. - To be completed.
@@ -411,4 +600,39 @@ class HeuristicModel(BaseModel):
         """
         # To be completed
         # Do not forget that this method is called in predict_preference (line 42) and therefor should return well-organized data for it to work.
-        return
+
+        # Fonction qui renvoie la valeur de la fonction d'utilité pour un critère i en n'importe quel point X[j]
+
+        # Fonction pour récupèrer les abscisses des points d'inflexion
+        def xl(i, l):
+            return self.mins[i] + l * (self.maxs[i] - self.mins[i]) / self.L
+
+        def step(i):
+            return (self.maxs[i] - self.mins[i]) / self.L
+
+        def u_k_i(k, i, j, X):
+            x = X[j][i]
+
+            if x == self.maxs[i]:
+                return self.model.getVarByName(f"u_{k}_{i}_{self.L}").x
+
+            else:
+                li = int((x - self.mins[i]) / step(i))
+
+                # On retourne la valeur de la fonction en la valeur d'intérêt
+                res = (
+                    self.model.getVarByName(f"u_{k}_{i}_{li+1}").x
+                    - self.model.getVarByName(f"u_{k}_{i}_{li}").x
+                ) / (step(i)) * (x - xl(i, li)) + self.model.getVarByName(
+                    f"u_{k}_{i}_{li}"
+                ).x
+
+                return res
+
+        # Fonction qui renvoie la valeur de la somme des utilités pour un produit
+        def u_k(k, j, X):
+            return sum(u_k_i(k, i, j, X) for i in range(self.N_CRITERIA))
+
+        return np.stack(
+            [np.array([u_k(0, j, X), u_k(1, j, X)]) for j in range(len(X))], axis=1
+        )

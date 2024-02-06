@@ -54,7 +54,7 @@ class PairsExplained(BaseMetric):
         if len(Ux.shape) == 1:
             Ux = np.expand_dims(Ux, axis=-1)
             Uy = np.expand_dims(Uy, axis=-1)
-        return np.sum(np.sum(Ux - Uy > 0, axis=1) > 0) / len(Ux)
+        return 100 * np.sum(np.sum(Ux - Uy > 0, axis=1) > 0) / len(Ux)
 
     def from_model(self, model, X, Y):
         """Method to use the metric from a model and data.
@@ -108,11 +108,21 @@ class ClusterIntersection(BaseMetric):
         truepos_plus_falsepos = comb(np.bincount(z_true), 2).sum()
         truepos_plus_falseneg = comb(np.bincount(z_pred), 2).sum()
         concatenation = np.c_[(z_true, z_pred)]
-        true_positive = sum(comb(np.bincount(concatenation[concatenation[:, 0] == i, 1]), 2).sum() for i in set(z_true))
+        true_positive = sum(
+            comb(np.bincount(concatenation[concatenation[:, 0] == i, 1]), 2).sum()
+            for i in set(z_true)
+        )
         false_positive = truepos_plus_falsepos - true_positive
         false_negative = truepos_plus_falseneg - true_positive
-        true_negative = comb(len(concatenation), 2) - true_positive - false_positive - false_negative
-        return (true_positive + true_negative) / (true_positive + false_positive + false_negative + true_negative)
+        true_negative = (
+            comb(len(concatenation), 2)
+            - true_positive
+            - false_positive
+            - false_negative
+        )
+        return (true_positive + true_negative) / (
+            true_positive + false_positive + false_negative + true_negative
+        )
 
     def from_model(self, model, X, Y, z_true):
         """Method to use the metric from a model and data.
