@@ -634,5 +634,24 @@ class HeuristicModel(BaseModel):
             return sum(u_k_i(k, i, j, X) for i in range(self.N_CRITERIA))
 
         return np.stack(
-            [np.array([u_k(0, j, X), u_k(1, j, X)]) for j in range(len(X))], axis=1
+            [
+                np.array([u_k(0, j, X), u_k(1, j, X), u_k(2, j, X)])
+                for j in range(len(X))
+            ],
+            axis=1,
         )
+
+    def get_u_k(self):
+        """Return all the optimized coefficients for each cluster and each criteria"""
+        all_coefficients = []
+        for k in range(self.K):
+            cluster_coefficients = []
+            for i in range(self.N_CRITERIA):
+                crit_coefficients = []
+                for l in range(self.L + 1):
+                    crit_coefficients.append(
+                        self.model.getVarByName(f"u_{k}_{i}_{l}").x
+                    )
+                cluster_coefficients.append(crit_coefficients)
+            all_coefficients.append(cluster_coefficients)
+        return all_coefficients
