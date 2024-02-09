@@ -10,6 +10,8 @@ import numpy as np
 from data import Dataloader
 from models import HeuristicModel, TwoClustersMIP
 
+np.random.seed(42)
+
 
 def predict_utility_from_avg_coefficients(X, avg_coefficients, all_mins, all_maxs):
     """
