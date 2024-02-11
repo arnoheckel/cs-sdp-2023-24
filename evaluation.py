@@ -138,7 +138,7 @@ if __name__ == "__main__":
     print(f"indexes size: {len(indexes)}")
     all_train_indexes = indexes[: int(len(indexes) * 0.9)]
     print(f"all_train_indexes size: {len(all_train_indexes)}")
-    train_indexes = np.random.choice(all_train_indexes, 5000, replace=True)
+    train_indexes = np.random.choice(all_train_indexes, 3000, replace=True)
     print(f"train_indexes size: {len(train_indexes)}")
     test_indexes = indexes[int(len(indexes) * 0.9) :]
     print(f"test_indexes size: {len(test_indexes)}")

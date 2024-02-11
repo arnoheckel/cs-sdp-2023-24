@@ -110,8 +110,8 @@ def run_optimization(nb_iterations, n_train_samples, all_mins, all_maxs, X, Y):
     utility_coefficients = []
     all_indexes = np.linspace(0, len(X) - 1, num=len(X), dtype=int)
     np.random.shuffle(all_indexes)
-    all_train_indexes = all_indexes[: int(len(all_indexes) * 0.95)]
-    all_test_indexes = all_indexes[int(len(all_indexes) * 0.95) :]
+    all_train_indexes = all_indexes[: int(len(all_indexes) * 0.9)]
+    all_test_indexes = all_indexes[int(len(all_indexes) * 0.9) :]
 
     for i in range(nb_iterations):
         train_indexes = np.random.choice(
@@ -166,7 +166,7 @@ if __name__ == "__main__":
     all_maxs = A.max(axis=0)
 
     nb_iterations_values = [1, 3, 5, 10, 15, 20]
-    n_train_samples_values = [500, 1000, 2000, 3000]
+    n_train_samples_values = [500, 1000, 2000, 3000, 4000, 5000]
 
     results_df = pd.DataFrame(
         columns=["n_iterations", "n_train_samples", "cluster_intersection"]
@@ -215,6 +215,15 @@ if __name__ == "__main__":
     print(f"Best number of training samples: {best_n_train_samples}")
     print(f"Best cluster intersection: {results_df["cluster_intersection"].max()}")
 
+    # # Plot the results in a line plot
+    # sns.lineplot(
+    #     data=results_df,
+    #     x="n_train_samples",
+    #     y="cluster_intersection",
+    # )
+    # plt.savefig("results_1_iteration.png")
+    # print("Results plot saved in results_line_plot.png")
+
     # Save the results
     results_df.to_csv("results.csv", index=False)
     print("Results saved in results.csv")
@@ -230,13 +239,4 @@ if __name__ == "__main__":
     plt.legend([],[], frameon=False)
     plt.savefig("results_scatter_plot.png")
 
-    sns.scatterplot(
-        data=results_df,
-        x="n_iterations",
-        y="n_train_samples",
-        size="cluster_intersection",
-    )
-    plt.legend([],[], frameon=False)
-    plt.savefig("results_scatter_plot_1.png")
 
-    print("Results plot saved in results_scatter_plot.png")
