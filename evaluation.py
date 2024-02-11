@@ -104,24 +104,24 @@ def evaluate_cluster_intersection(Z_pred, Z_true):
 
 if __name__ == "__main__":
     ### First part: test of the MIP model
-    # data_loader = Dataloader("data/dataset_4_test")  # Path to test dataset
-    # X, Y = data_loader.load()
+    data_loader = Dataloader("data/dataset_4_test")  # Path to test dataset
+    X, Y = data_loader.load()
 
-    # model = TwoClustersMIP(
-    #     n_clusters=2, n_pieces=5
-    # )  # You can add your model's arguments here, the best would be set up the right ones as default.
-    # model.fit(X, Y)
+    model = TwoClustersMIP(
+        n_clusters=2, n_pieces=5
+    )  # You can add your model's arguments here, the best would be set up the right ones as default.
+    model.fit(X, Y)
 
-    # # %Pairs Explained
-    # pairs_explained = metrics.PairsExplained()
-    # print("Percentage of explained preferences:", pairs_explained.from_model(model, X, Y))
+    # %Pairs Explained
+    pairs_explained = metrics.PairsExplained()
+    print("Percentage of explained preferences:", pairs_explained.from_model(model, X, Y))
 
-    # # %Cluster Intersection
-    # cluster_intersection = metrics.ClusterIntersection()
+    # %Cluster Intersection
+    cluster_intersection = metrics.ClusterIntersection()
 
-    # Z = data_loader.get_ground_truth_labels()
-    # print("% of pairs well grouped together by the model:")
-    # print("Cluster intersection for all samples:", cluster_intersection.from_model(model, X, Y, Z))
+    Z = data_loader.get_ground_truth_labels()
+    print("% of pairs well grouped together by the model:")
+    print("Cluster intersection for all samples:", cluster_intersection.from_model(model, X, Y, Z))
 
     ### 2nd part: test of the heuristic model
     data_loader = Dataloader("data/dataset_10")  # Path to test dataset # _test
@@ -171,55 +171,55 @@ if __name__ == "__main__":
 
     ### 3rd part: test of the heuristic model on multiple sapled datasets and average the results
 
-    # data_loader = Dataloader("data/dataset_10")  # Path to test dataset # _test
-    # X, Y = data_loader.load()
+    data_loader = Dataloader("data/dataset_10")  # Path to test dataset # _test
+    X, Y = data_loader.load()
 
-    # # Compute mins and maxs on the whole dataset
-    # A = np.concatenate((X, Y), axis=0)
-    # all_mins = A.min(axis=0)
-    # all_maxs = A.max(axis=0)
+    # Compute mins and maxs on the whole dataset
+    A = np.concatenate((X, Y), axis=0)
+    all_mins = A.min(axis=0)
+    all_maxs = A.max(axis=0)
 
-    # nb_iterations = 10
-    # utility_coefficients = []
+    nb_iterations = 10
+    utility_coefficients = []
 
-    # all_indexes = np.linspace(0, len(X) - 1, num=len(X), dtype=int)
-    # np.random.shuffle(all_indexes)
-    # all_train_indexes = all_indexes[: int(len(all_indexes) * 0.95)]
-    # all_test_indexes = all_indexes[int(len(all_indexes) * 0.95) :]
+    all_indexes = np.linspace(0, len(X) - 1, num=len(X), dtype=int)
+    np.random.shuffle(all_indexes)
+    all_train_indexes = all_indexes[: int(len(all_indexes) * 0.95)]
+    all_test_indexes = all_indexes[int(len(all_indexes) * 0.95) :]
 
-    # for i in range(nb_iterations):
-    #     print(f"ITERATION {i}")
-    #     train_indexes = np.random.choice(all_train_indexes, 2000, replace=True)
-    #     X_train = X[train_indexes]
-    #     Y_train = Y[train_indexes]
-    #     model = HeuristicModel(all_mins, all_maxs, n_clusters=3)
-    #     model.fit(X_train, Y_train)
-    #     coefficients = model.get_u_k()
-    #     utility_coefficients.append(coefficients)
+    for i in range(nb_iterations):
+        print(f"ITERATION {i}")
+        train_indexes = np.random.choice(all_train_indexes, 2000, replace=True)
+        X_train = X[train_indexes]
+        Y_train = Y[train_indexes]
+        model = HeuristicModel(all_mins, all_maxs, n_clusters=3)
+        model.fit(X_train, Y_train)
+        coefficients = model.get_u_k()
+        utility_coefficients.append(coefficients)
 
-    # avg_utility_coefficients = np.mean(utility_coefficients, axis=0)
+    avg_utility_coefficients = np.mean(utility_coefficients, axis=0)
 
-    # X_test = X[all_test_indexes]
-    # Y_test = Y[all_test_indexes]
-    # Z_true = data_loader.get_ground_truth_labels()[all_test_indexes]
-    # U_X = predict_utility_from_avg_coefficients(
-    #     X_test, avg_utility_coefficients, all_mins, all_maxs
-    # )
-    # U_Y = predict_utility_from_avg_coefficients(
-    #     Y_test, avg_utility_coefficients, all_mins, all_maxs
-    # )
+    X_test = X[all_test_indexes]
+    Y_test = Y[all_test_indexes]
+    Z_true = data_loader.get_ground_truth_labels()[all_test_indexes]
+    U_X = predict_utility_from_avg_coefficients(
+        X_test, avg_utility_coefficients, all_mins, all_maxs
+    )
+    U_Y = predict_utility_from_avg_coefficients(
+        Y_test, avg_utility_coefficients, all_mins, all_maxs
+    )
 
-    # # Pairs Explained
-    # print(U_X.shape, U_Y.shape)
-    # pairs_explained = 100 * np.sum(np.sum(U_X - U_Y > 0, axis=1) > 0) / len(U_X)
-    # print(
-    #     "Percentage of explained preferences:",
-    #     pairs_explained,
-    # )
+    # Pairs Explained
+    print(U_X.shape, U_Y.shape)
+    pairs_explained = 100 * np.sum(np.sum(U_X - U_Y > 0, axis=1) > 0) / len(U_X)
+    print(
+        "Percentage of explained preferences:",
+        pairs_explained,
+    )
 
-    # # Cluster Intersection
-    # Z_pred = np.argmax(U_X - U_Y, axis=0)
-    # print(
-    #     "Cluster intersection for all samples:",
-    #     evaluate_cluster_intersection(Z_pred, Z_true),
-    # )
+    # Cluster Intersection
+    Z_pred = np.argmax(U_X - U_Y, axis=0)
+    print(
+        "Cluster intersection for all samples:",
+        evaluate_cluster_intersection(Z_pred, Z_true),
+    )

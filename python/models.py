@@ -205,8 +205,6 @@ class TwoClustersMIP(BaseModel):
         self.mins = A.min(axis=0)
         self.maxs = A.max(axis=0)
 
-        X = X[:300]
-        Y = Y[:300]
 
         ordonnees_infl = [
             [
