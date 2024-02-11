@@ -2,6 +2,9 @@ import os
 import sys
 
 from scipy.special import comb
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
 
 sys.path.append("python/")
 
@@ -111,7 +114,6 @@ def run_optimization(nb_iterations, n_train_samples, all_mins, all_maxs, X, Y):
     all_test_indexes = all_indexes[int(len(all_indexes) * 0.95) :]
 
     for i in range(nb_iterations):
-        print(f"ITERATION {i}")
         train_indexes = np.random.choice(
             all_train_indexes, n_train_samples, replace=True
         )
@@ -163,18 +165,19 @@ if __name__ == "__main__":
     all_mins = A.min(axis=0)
     all_maxs = A.max(axis=0)
 
-    nb_iterations_values = [1, 3, 5, 10, 15, 20, 30]
+    nb_iterations_values = [1, 3, 5, 10, 15, 20]
     n_train_samples_values = [500, 1000, 2000, 3000]
 
-    cluster_intersections = np.zeros(
-        (len(nb_iterations_values), len(n_train_samples_values))
+    results_df = pd.DataFrame(
+        columns=["n_iterations", "n_train_samples", "cluster_intersection"]
     )
+
     for i in range(len(nb_iterations_values)):
         for j in range(len(n_train_samples_values)):
             print(
                 f"Running optimization for {nb_iterations_values[i]} iterations and {n_train_samples_values[j]} training samples"
             )
-            cluster_intersections[i, j] = run_optimization(
+            cluster_intersection = run_optimization(
                 nb_iterations_values[i],
                 n_train_samples_values[j],
                 all_mins,
@@ -182,18 +185,58 @@ if __name__ == "__main__":
                 X,
                 Y,
             )
+            results_df = pd.concat(
+                [
+                    results_df,
+                    pd.DataFrame(
+                        [
+                            {
+                                "n_iterations": nb_iterations_values[i],
+                                "n_train_samples": n_train_samples_values[j],
+                                "cluster_intersection": cluster_intersection,
+                            }
+                        ]
+                    ),
+                ]
+            )
 
-    print(f"Cluster intersections: {cluster_intersections}")
+    print(f"Results Dataframe: {results_df}")
 
-    # return the best number of iterations and the best number of training samples
-    best_iteration_index = np.argmax(cluster_intersections) // len(
-        n_train_samples_values
-    )
-    best_n_train_samples_index = np.argmax(cluster_intersections) % len(
-        n_train_samples_values
-    )
-    best_iteration = nb_iterations_values[best_iteration_index]
-    best_n_train_samples = n_train_samples_values[best_n_train_samples_index]
+    # Return the values of n_iterations and n_train_samples that maximize the cluster_intersection
+    max_index_cluster_intersection = results_df["cluster_intersection"].idxmax()
+    best_iteration = results_df.loc[
+        max_index_cluster_intersection, "n_iterations"
+    ]
+    best_n_train_samples = results_df.loc[
+        max_index_cluster_intersection, "n_train_samples"
+    ] 
+
     print(f"Best number of iterations: {best_iteration}")
     print(f"Best number of training samples: {best_n_train_samples}")
-    print(f"Best cluster intersection: {np.max(cluster_intersections)}")
+    print(f"Best cluster intersection: {results_df["cluster_intersection"].max()}")
+
+    # Save the results
+    results_df.to_csv("results.csv", index=False)
+    print("Results saved in results.csv")
+
+    # Create scatter plot
+    sns.scatterplot(
+        data=results_df,
+        x="n_iterations",
+        y="n_train_samples",
+        hue="cluster_intersection",
+        size="cluster_intersection",
+    )
+    plt.legend([],[], frameon=False)
+    plt.savefig("results_scatter_plot.png")
+
+    sns.scatterplot(
+        data=results_df,
+        x="n_iterations",
+        y="n_train_samples",
+        size="cluster_intersection",
+    )
+    plt.legend([],[], frameon=False)
+    plt.savefig("results_scatter_plot_1.png")
+
+    print("Results plot saved in results_scatter_plot.png")
