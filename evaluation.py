@@ -133,10 +133,15 @@ if __name__ == "__main__":
     all_maxs = A.max(axis=0)
     # print(f"all_mins: {all_mins}\n all_maxs: {all_maxs}")
 
-    indexes = np.linspace(0, len(X) - 1, num=2000, dtype=int)  # len(X)
+    indexes = np.linspace(0, len(X) - 1, num=len(X), dtype=int)
     np.random.shuffle(indexes)
-    train_indexes = indexes[: int(len(indexes) * 0.8)]
-    test_indexes = indexes[int(len(indexes) * 0.8) :]
+    print(f"indexes size: {len(indexes)}")
+    all_train_indexes = indexes[: int(len(indexes) * 0.9)]
+    print(f"all_train_indexes size: {len(all_train_indexes)}")
+    train_indexes = np.random.choice(all_train_indexes, 5000, replace=True)
+    print(f"train_indexes size: {len(train_indexes)}")
+    test_indexes = indexes[int(len(indexes) * 0.9) :]
+    print(f"test_indexes size: {len(test_indexes)}")
 
     # print(train_indexes, test_indexes)
     X_train = X[train_indexes]
